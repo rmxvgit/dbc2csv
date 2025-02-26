@@ -35,9 +35,10 @@ uint32_t get_nlines(FILE *file);
 uint16_t get_len_header(FILE *file);
 uint16_t get_len_record(FILE *file);
 uint16_t get_fields(FILE *file, DBF_FIELD *fields);
-void process_dbf_body(FILE *file, DBF_INFO *dbf_info, const char* csv_output_file);
+void process_dbf_body(FILE *file, DBF_INFO *dbf_info, FILE* csv_file);
 void process_entry_n(FILE *dbf_file, FILE *csv_file, DBF_INFO *dbf_info, uint32_t n);
 void process_header(FILE *csv_file, DBF_INFO *dbf_info);
+void str_subs(char* str, char changed, char changer, int til);
 
 // Função principal
 // Uso esperado: ./dbf2c <arquivo_fonte> <arquivo_destino>
@@ -53,11 +54,18 @@ int main(int n_args, char **argv) {
     DBF_INFO *dbf_file_info = get_dbf_info(dbf_file);
 
     // Exibe algumas informações do arquivo DBF
-    printf("%d %d\n%d\n%d\n", dbf_file_info->nLines, dbf_file_info->lenHeader,
-           dbf_file_info->sizeOfRecord, dbf_file_info->nCols);
+    printf("linhas: %d\ntamanaho header %d\ntamanho de uma linha %d\nnumero de colunas %d\n",
+           dbf_file_info->nLines,
+           dbf_file_info->lenHeader,
+           dbf_file_info->sizeOfRecord,
+           dbf_file_info->nCols);
+
+    // Processa a header do arquivo DBF e converte para CSV
 
     // Processa o corpo do arquivo DBF e converte para CSV
-    process_dbf_body(dbf_file, dbf_file_info, arquivo_destino);
+    FILE* csv_file = fopen(arquivo_destino, "w");
+    process_header(csv_file, dbf_file_info);
+    process_dbf_body(dbf_file, dbf_file_info, csv_file);
 }
 
 // Função para criar uma nova estrutura DBF_INFO
@@ -86,12 +94,8 @@ DBF_INFO *get_dbf_info(FILE *file) {
 }
 
 // Função para processar o corpo do arquivo DBF e convertê-lo para CSV
-void process_dbf_body(FILE *dbf_file, DBF_INFO *dbf_info, const char* csv_output_file) {
-    FILE* csv_file = fopen(csv_output_file, "w");  // Abre o arquivo CSV para escrita
+void process_dbf_body(FILE *dbf_file, DBF_INFO *dbf_info, FILE* csv_file) {
     uint32_t n = 0;
-
-    // escreve os campos no arquivo csv
-    process_header(csv_file, dbf_info);
 
     // Processa cada entrada (linha) do arquivo DBF
     while (fgetc(dbf_file) != 0x1a) {  // 0x1a é o marcador de fim de arquivo em DBF
@@ -105,7 +109,7 @@ void process_header(FILE *csv_file, DBF_INFO *dbf_info) {
         if (i < dbf_info->nCols-1) {
             fprintf(csv_file, "%s,", dbf_info->fields[i].fieldName);
         } else {
-            fprintf(csv_file, "%s", dbf_info->fields[i].fieldName);
+            fprintf(csv_file, "%s\n", dbf_info->fields[i].fieldName);
         }
     }
 }
@@ -124,7 +128,6 @@ void process_entry_n(FILE *dbf_file, FILE *csv_file, DBF_INFO *dbf_info, uint32_
     if (line_flag == 0x2a){ // se o arquivo foi deletado ignore-o
         return;
     }
-
     
     // Processa cada campo (coluna) do registro
     for (int i = 0; i < dbf_info->nCols; i++) {
@@ -134,17 +137,24 @@ void process_entry_n(FILE *dbf_file, FILE *csv_file, DBF_INFO *dbf_info, uint32_
         // Lê o conteúdo do campo
         fread(cell_buffer, size_of_cell, 1, dbf_file);
 
+        str_subs(cell_buffer, ',', '.', 14);
         // Processa o campo 
         if (i < dbf_info->nCols-1) {
             ((char*)cell_buffer)[size_of_cell] = '\0';  // Adiciona terminador nulo
             fprintf(csv_file, "%s,", (char*)cell_buffer);
         } else {
             ((char*)cell_buffer)[size_of_cell] = '\0';  // Adiciona terminador nulo
-            fprintf(csv_file, "%s", (char*)cell_buffer);
+            fprintf(csv_file, "%s\n", (char*)cell_buffer);
         }
     }
+}
 
-    fprintf(csv_file, "\n");
+void str_subs(char* str, char changed, char changer, int til) {
+    for (int i = 0; i < til; i++){
+        if (str[i] == changed){
+            str[i] = changer;
+        }
+    }
 }
 
 // Função para obter o número de linhas no arquivo DBF
